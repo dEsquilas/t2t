@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sail artisan make:model:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": []
+  }
+}

@@ -39,6 +39,12 @@ const showingNavigationDropdown = ref(false);
                                 >
                                     Dashboard
                                 </NavLink>
+                                <NavLink
+                                    :href="route('chat.index')"
+                                    :active="route().current('chat.*')"
+                                >
+                                    Chat AI
+                                </NavLink>
                             </div>
                         </div>
 
@@ -145,6 +151,12 @@ const showingNavigationDropdown = ref(false);
                             :active="route().current('dashboard')"
                         >
                             Dashboard
+                        </ResponsiveNavLink>
+                        <ResponsiveNavLink
+                            :href="route('chat.index')"
+                            :active="route().current('chat.*')"
+                        >
+                            Chat AI
                         </ResponsiveNavLink>
                     </div>
 

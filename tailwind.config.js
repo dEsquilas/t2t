@@ -9,6 +9,8 @@ export default {
         './resources/views/**/*.blade.php',
         './resources/js/**/*.vue',
     ],
+    
+    darkMode: 'media', // Automatically uses system preference
 
     theme: {
         extend: {
