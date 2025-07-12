@@ -144,11 +144,19 @@ class ChatController extends Controller
 					'content' => $fullResponse,
 				]);
 
+				// Generate conversation title after first exchange if it's still "New Conversation"
+				$conversationTitle = null;
+				if ($conversation->title === 'New Conversation' && $conversation->messages()->count() === 2) {
+					$conversationTitle = $this->generateConversationTitle($conversation, $fullResponse);
+					$conversation->update(['title' => $conversationTitle]);
+				}
+
 				// Send end event con el mensaje completo guardado
 				yield "event: end\n";
 				yield "data: " . json_encode([
 						'type' => 'end',
-						'message_id' => $assistantMessage->id
+						'message_id' => $assistantMessage->id,
+						'conversation_title' => $conversationTitle
 					]) . "\n\n";
 
 			} catch (\Exception $e) {
@@ -202,5 +210,49 @@ class ChatController extends Controller
 				]
 			]
 		]);
+	}
+
+	private function generateConversationTitle(Conversation $conversation, string $assistantResponse): string
+	{
+		try {
+			// Get the first user message
+			$firstUserMessage = $conversation->messages()
+				->where('role', 'user')
+				->orderBy('created_at')
+				->first();
+
+			if (!$firstUserMessage) {
+				return 'New Conversation';
+			}
+
+			$provider = $this->getProvider($conversation->provider);
+
+			// Create a prompt to generate a concise title in the same language as the conversation
+			$titlePrompt = new UserMessage(
+				"Based on this conversation, generate a concise, descriptive title in the SAME LANGUAGE as the conversation (maximum 5 words). Do not translate, use the conversation's language:\n\n" .
+				"User: {$firstUserMessage->content}\n" .
+				"Assistant: {$assistantResponse}\n\n" .
+				"Generate title in the same language:"
+			);
+
+			$titleResponse = Prism::text()
+				->using($provider, $conversation->model)
+				->withMessages([$titlePrompt])
+				->generate();
+
+			// Clean up the response and limit length
+			$title = trim(str_replace(['"', "'", 'Title:', 'title:', '\n'], '', $titleResponse->text));
+			$title = substr($title, 0, 50); // Limit to 50 characters
+
+			return $title ?: 'New Conversation';
+
+		} catch (\Exception $e) {
+			Log::error('Failed to generate conversation title', [
+				'error' => $e->getMessage(),
+				'conversation_id' => $conversation->id
+			]);
+			
+			return 'New Conversation';
+		}
 	}
 }

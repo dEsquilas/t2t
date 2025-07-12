@@ -369,6 +369,16 @@ const sendMessage = async () => {
               messages.value.push(assistantMessage)
               streamingMessage.value = ''
               isStreaming.value = false
+              
+              // Update conversation title if provided
+              if (data.conversation_title && selectedConversation.value) {
+                selectedConversation.value.title = data.conversation_title
+                // Also update in conversations list
+                const conversationIndex = conversations.value.findIndex(c => c.id === selectedConversation.value.id)
+                if (conversationIndex !== -1) {
+                  conversations.value[conversationIndex].title = data.conversation_title
+                }
+              }
             } else if (data.type === 'error') {
               console.error('Streaming error:', data.error)
               isStreaming.value = false
