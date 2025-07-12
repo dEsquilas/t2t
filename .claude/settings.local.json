@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(sail artisan make:model:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(sail artisan:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(mkdir:*)",
+      "Bash(git rm:*)"
     ],
     "deny": []
   }

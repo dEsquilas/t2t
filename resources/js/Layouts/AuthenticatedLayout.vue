@@ -45,6 +45,12 @@ const showingNavigationDropdown = ref(false);
                                 >
                                     Chat AI
                                 </NavLink>
+                                <NavLink
+                                    :href="route('personality-profiles.index')"
+                                    :active="route().current('personality-profiles.*')"
+                                >
+                                    Perfiles
+                                </NavLink>
                             </div>
                         </div>
 
