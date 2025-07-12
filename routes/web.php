@@ -3,6 +3,7 @@
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\PersonalityProfileController;
+use App\Http\Controllers\FileUploadController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -47,6 +48,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/api/conversations/{id}/messages', [ChatController::class, 'sendMessage'])->name('api.conversations.messages');
     Route::get('/api/models', [ChatController::class, 'getAvailableModels'])->name('api.models');
     Route::get('/api/profiles', [ChatController::class, 'getAvailableProfiles'])->name('api.profiles');
+    Route::post('/api/upload', [FileUploadController::class, 'upload'])->name('api.upload');
 });
 
 require __DIR__.'/auth.php';

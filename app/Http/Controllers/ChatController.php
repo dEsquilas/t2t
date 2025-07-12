@@ -25,7 +25,7 @@ class ChatController extends Controller
 	public function getConversations()
 	{
 		return Auth::user()->conversations()
-			->with(['messages', 'profile'])
+			->with(['messages.attachments', 'profile'])
 			->orderBy('updated_at', 'desc')
 			->get();
 	}
@@ -52,7 +52,7 @@ class ChatController extends Controller
 	public function getConversation($id)
 	{
 		$conversation = Auth::user()->conversations()
-			->with(['messages', 'profile'])
+			->with(['messages.attachments', 'profile'])
 			->findOrFail($id);
 
 		return response()->json($conversation);
@@ -84,6 +84,8 @@ class ChatController extends Controller
 	{
 		$validated = $request->validate([
 			'content' => 'required|string',
+			'attachments' => 'nullable|array',
+			'attachments.*' => 'array',
 		]);
 
 		$conversation = Auth::user()->conversations()->findOrFail($id);
@@ -93,6 +95,26 @@ class ChatController extends Controller
 			'role' => 'user',
 			'content' => $validated['content'],
 		]);
+
+		// Handle attachments if provided
+		if (!empty($validated['attachments'])) {
+			foreach ($validated['attachments'] as $attachmentData) {
+				if (isset($attachmentData['temp_path'])) {
+					\App\Models\MessageAttachment::create([
+						'message_id' => $userMessage->id,
+						'filename' => basename($attachmentData['temp_path']),
+						'original_name' => $attachmentData['filename'],
+						'mime_type' => $attachmentData['mime_type'],
+						'size' => $attachmentData['size'],
+						'path' => $attachmentData['temp_path'],
+						'extracted_content' => $attachmentData['extracted_content'] ?? null,
+						'metadata' => [
+							'uploaded_at' => now()->toIso8601String(),
+						],
+					]);
+				}
+			}
+		}
 
 		// Build message history for context
 		$messages = [];
@@ -108,9 +130,25 @@ class ChatController extends Controller
 			}
 		}
 		
-		foreach ($conversation->messages()->orderBy('created_at')->get() as $msg) {
+		foreach ($conversation->messages()->with('attachments')->orderBy('created_at')->get() as $msg) {
+			$messageContent = $msg->content;
+			
+			// Append attachment information to user messages
+			if ($msg->role === 'user' && $msg->attachments->count() > 0) {
+				$messageContent .= "\n\n[Attachments:]";
+				foreach ($msg->attachments as $attachment) {
+					if ($attachment->isImage()) {
+						$messageContent .= "\n- Image: {$attachment->original_name}";
+					} else if ($attachment->extracted_content) {
+						$messageContent .= "\n- File: {$attachment->original_name}\nContent:\n{$attachment->extracted_content}";
+					} else {
+						$messageContent .= "\n- File: {$attachment->original_name} (content not extracted)";
+					}
+				}
+			}
+			
 			if ($msg->role === 'user') {
-				$messages[] = new UserMessage($msg->content);
+				$messages[] = new UserMessage($messageContent);
 			} elseif ($msg->role === 'assistant') {
 				$messages[] = new AssistantMessage($msg->content);
 			}
