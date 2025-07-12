@@ -46,6 +46,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/api/conversations/{id}', [ChatController::class, 'deleteConversation'])->name('api.conversations.delete');
     Route::post('/api/conversations/{id}/messages', [ChatController::class, 'sendMessage'])->name('api.conversations.messages');
     Route::get('/api/models', [ChatController::class, 'getAvailableModels'])->name('api.models');
+    Route::get('/api/profiles', [ChatController::class, 'getAvailableProfiles'])->name('api.profiles');
 });
 
 require __DIR__.'/auth.php';

@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Models\Profile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Prism\Prism\Prism;
 use Prism\Prism\Enums\Provider;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
+use Prism\Prism\ValueObjects\Messages\SystemMessage;
 
 use Illuminate\Support\Facades\Log;
 
@@ -23,7 +25,7 @@ class ChatController extends Controller
 	public function getConversations()
 	{
 		return Auth::user()->conversations()
-			->with('messages')
+			->with(['messages', 'profile'])
 			->orderBy('updated_at', 'desc')
 			->get();
 	}
@@ -34,21 +36,23 @@ class ChatController extends Controller
 			'title' => 'nullable|string|max:255',
 			'model' => 'required|string',
 			'provider' => 'required|string',
+			'profile_id' => 'nullable|exists:profiles,id',
 		]);
 
 		$conversation = Auth::user()->conversations()->create([
 			'title' => $validated['title'] ?? 'New Conversation',
 			'model' => $validated['model'],
 			'provider' => $validated['provider'],
+			'profile_id' => $validated['profile_id'] ?? null,
 		]);
 
-		return response()->json($conversation->load('messages'));
+		return response()->json($conversation->load(['messages', 'profile']));
 	}
 
 	public function getConversation($id)
 	{
 		$conversation = Auth::user()->conversations()
-			->with('messages')
+			->with(['messages', 'profile'])
 			->findOrFail($id);
 
 		return response()->json($conversation);
@@ -92,6 +96,18 @@ class ChatController extends Controller
 
 		// Build message history for context
 		$messages = [];
+		$systemPrompt = null;
+		
+		// If this is the first message and we have a profile, add the personality context
+		if ($conversation->messages()->count() === 1 && $conversation->profile_id) {
+			$profile = Profile::find($conversation->profile_id);
+			if ($profile && $profile->status === 'completed') {
+				$personalityContext = $profile->generateChatProfile();
+				// For Anthropic, we'll use withSystemPrompt instead of SystemMessage
+				$systemPrompt = $personalityContext;
+			}
+		}
+		
 		foreach ($conversation->messages()->orderBy('created_at')->get() as $msg) {
 			if ($msg->role === 'user') {
 				$messages[] = new UserMessage($msg->content);
@@ -101,16 +117,22 @@ class ChatController extends Controller
 		}
 
 		// Generate AI response using streaming
-		return response()->eventStream(function () use ($conversation, $messages) {
+		return response()->eventStream(function () use ($conversation, $messages, $systemPrompt) {
 			$fullResponse = '';
 
 			try {
 				$provider = $this->getProvider($conversation->provider);
 
-				$stream = Prism::text()
+				$prism = Prism::text()
 					->using($provider, $conversation->model)
-					->withMessages($messages)
-					->asStream();
+					->withMessages($messages);
+
+				// Add system prompt if available
+				if ($systemPrompt) {
+					$prism = $prism->withSystemPrompt($systemPrompt);
+				}
+
+				$stream = $prism->asStream();
 
 				// Send start event
 				yield "event: start\n";
@@ -182,6 +204,22 @@ class ChatController extends Controller
 			'anthropic' => Provider::Anthropic,
 			default => Provider::Anthropic,
 		};
+	}
+
+	public function getAvailableProfiles()
+	{
+		$profiles = Auth::user()->profiles()
+			->where('status', 'completed')
+			->select('id', 'name', 'full_name')
+			->get()
+			->map(function ($profile) {
+				return [
+					'id' => $profile->id,
+					'name' => $profile->full_name ?: $profile->name,
+				];
+			});
+
+		return response()->json($profiles);
 	}
 
 	public function getAvailableModels()
