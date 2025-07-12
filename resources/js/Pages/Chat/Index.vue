@@ -60,6 +60,9 @@
           <div class="flex items-center">
             <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ selectedConversation.title }}</h2>
             <span class="ml-3 text-sm text-gray-500 dark:text-gray-400">{{ selectedConversation.provider }} - {{ getModelName(selectedConversation.model) }}</span>
+            <span v-if="selectedConversation.profile" class="ml-3 px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full">
+              {{ selectedConversation.profile.full_name || selectedConversation.profile.name }}
+            </span>
           </div>
           <div class="flex items-center space-x-2">
             <button
@@ -190,6 +193,80 @@
         </div>
       </div>
     </div>
+
+    <!-- Profile selector modal -->
+    <div v-if="showProfileSelector" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-2xl w-full mx-4 border border-gray-200 dark:border-gray-700">
+        <h3 class="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Choose Personality Profile (Optional)</h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">
+          Select a personality profile to make the AI impersonate that person, or start without a profile for a standard conversation.
+        </p>
+        
+        <!-- No profile option -->
+        <div class="mb-6">
+          <label class="flex items-center p-4 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500 cursor-pointer transition-colors">
+            <input
+              type="radio"
+              :value="null"
+              v-model="selectedProfile"
+              class="mr-3 text-blue-600 dark:text-blue-500 focus:ring-blue-500 dark:focus:ring-blue-400"
+            />
+            <div class="flex-1">
+              <div class="font-medium text-gray-900 dark:text-gray-100">No Profile - Standard Conversation</div>
+              <div class="text-sm text-gray-500 dark:text-gray-400">Start a regular conversation without any specific personality</div>
+            </div>
+          </label>
+        </div>
+
+        <!-- Available profiles -->
+        <div v-if="availableProfiles.length > 0" class="space-y-3">
+          <h4 class="font-medium text-gray-700 dark:text-gray-300 mb-3">Available Profiles</h4>
+          <div class="max-h-96 overflow-y-auto space-y-2">
+            <label
+              v-for="profile in availableProfiles"
+              :key="profile.id"
+              class="flex items-center p-4 rounded-lg border-2 border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500 cursor-pointer transition-colors"
+            >
+              <input
+                type="radio"
+                :value="profile.id"
+                v-model="selectedProfile"
+                class="mr-3 text-blue-600 dark:text-blue-500 focus:ring-blue-500 dark:focus:ring-blue-400"
+              />
+              <div class="flex-1">
+                <div class="font-medium text-gray-900 dark:text-gray-100">{{ profile.name }}</div>
+                <div class="text-sm text-gray-500 dark:text-gray-400">Personality profile for impersonation</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div v-else class="text-center py-8">
+          <div class="text-gray-500 dark:text-gray-400 mb-2">
+            <svg class="w-12 h-12 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+            </svg>
+          </div>
+          <p class="text-gray-600 dark:text-gray-400">No personality profiles available</p>
+          <p class="text-sm text-gray-500 dark:text-gray-500 mt-1">Create a profile first to use this feature</p>
+        </div>
+
+        <div class="flex justify-end space-x-3 mt-6">
+          <button
+            @click="showProfileSelector = false"
+            class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+          >
+            Cancel
+          </button>
+          <button
+            @click="createConversationWithProfile"
+            class="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600"
+          >
+            Start Conversation
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -208,11 +285,15 @@ const messageInput = ref(null)
 const showModelSelector = ref(false)
 const availableModels = ref([])
 const selectedModel = ref({ provider: 'anthropic', model: 'claude-3-5-sonnet-20241022' })
+const showProfileSelector = ref(false)
+const availableProfiles = ref([])
+const selectedProfile = ref(null)
 
 // Load data on mount
 onMounted(async () => {
   await loadConversations()
   await loadAvailableModels()
+  await loadAvailableProfiles()
 })
 
 // Watch for conversation changes - messages are already loaded from selectConversation
@@ -250,6 +331,15 @@ const loadAvailableModels = async () => {
   }
 }
 
+const loadAvailableProfiles = async () => {
+  try {
+    const response = await axios.get('/api/profiles')
+    availableProfiles.value = response.data
+  } catch (error) {
+    console.error('Error loading profiles:', error)
+  }
+}
+
 const loadMessages = async (conversationId) => {
   try {
     const response = await axios.get(`/api/conversations/${conversationId}`)
@@ -265,18 +355,30 @@ const selectConversation = (conversation) => {
   messages.value = conversation.messages || []
 }
 
-const createNewConversation = async () => {
+const createNewConversation = () => {
+  showProfileSelector.value = true
+}
+
+const createConversationWithProfile = async () => {
   try {
-    const response = await axios.post('/api/conversations', {
+    const payload = {
       title: 'New Conversation',
       model: selectedModel.value.model,
       provider: selectedModel.value.provider
-    })
+    }
+    
+    if (selectedProfile.value) {
+      payload.profile_id = selectedProfile.value
+    }
+    
+    const response = await axios.post('/api/conversations', payload)
     
     const newConversation = response.data
     conversations.value.unshift(newConversation)
     selectedConversation.value = newConversation
     messages.value = []
+    showProfileSelector.value = false
+    selectedProfile.value = null
   } catch (error) {
     console.error('Error creating conversation:', error)
   }
