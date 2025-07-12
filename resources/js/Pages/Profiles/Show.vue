@@ -345,7 +345,7 @@
                                 <h3 class="font-medium text-gray-900 dark:text-gray-100">Vista previa del Markdown</h3>
                             </div>
                             <div class="p-4 bg-gray-50 dark:bg-gray-900 max-h-96 overflow-y-auto">
-                                <pre class="text-sm whitespace-pre-wrap font-mono border-0 bg-transparent p-0 m-0 markdown-preview">{{ generatedMarkdown }}</pre>
+                                <pre class="text-sm whitespace-pre-wrap font-mono text-black dark:text-white bg-transparent border-0 p-0 m-0">{{ generatedMarkdown }}</pre>
                             </div>
                         </div>
                     </div>
@@ -543,13 +543,5 @@ onMounted(() => {
     border: none;
 }
 
-.markdown-preview {
-    color: #111827 !important; /* Gray-900 para modo claro */
-    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace !important;
-}
-
-/* Modo oscuro */
-.dark .markdown-preview {
-    color: #f9fafb !important; /* Gray-100 para modo oscuro */
-}
+/* Sin estilos adicionales para markdown */
 </style>
