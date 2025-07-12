@@ -102,18 +102,15 @@
                   : 'bg-white dark:bg-gray-800 shadow-md text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700'
               ]"
             >
-              <div class="whitespace-pre-wrap">{{ message.content }}</div>
-              <div class="text-xs mt-2 opacity-70">
-                {{ formatTime(message.created_at) }}
-              </div>
+              <div class="whitespace-pre-wrap break-words">{{ message.content }}</div>
             </div>
           </div>
 
           <!-- Streaming message -->
           <div v-if="isStreaming" class="flex justify-start">
             <div class="max-w-3xl p-4 rounded-lg bg-white dark:bg-gray-800 shadow-md text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700">
-              <div class="whitespace-pre-wrap">{{ streamingMessage }}</div>
-              <div class="flex items-center mt-2">
+              <div class="whitespace-pre-wrap break-words">{{ streamingMessage }}</div>
+              <div class="flex items-center mt-2" v-if="!streamingMessage">
                 <div class="animate-pulse w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full mr-1"></div>
                 <div class="animate-pulse w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full mr-1" style="animation-delay: 0.2s"></div>
                 <div class="animate-pulse w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full" style="animation-delay: 0.4s"></div>
@@ -285,6 +282,8 @@ const createNewConversation = async () => {
   }
 }
 
+// Reemplaza la función sendMessage con esta versión mejorada
+
 const sendMessage = async () => {
   if (!newMessage.value.trim() || !selectedConversation.value || isStreaming.value) return
 
@@ -324,25 +323,45 @@ const sendMessage = async () => {
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
+    let buffer = ''
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
 
-      const chunk = decoder.decode(value)
-      const lines = chunk.split('\n')
+      // Decode chunk and add to buffer
+      buffer += decoder.decode(value, { stream: true })
+      
+      // Process complete lines from buffer
+      const lines = buffer.split('\n')
+      // Keep the last incomplete line in the buffer
+      buffer = lines.pop() || ''
 
       for (const line of lines) {
+        if (line.trim() === '') continue
+        
+        // Handle ray() interference: remove the extra "data: " prefix
+        let processedLine = line
         if (line.startsWith('data: ')) {
+          processedLine = line.slice(6) // Remove "data: " prefix
+        }
+        
+        // Skip event: lines - they're not JSON
+        if (processedLine.startsWith('event: ')) {
+          continue
+        }
+        
+        // Process data: lines (after removing the first "data: " if present)
+        if (processedLine.startsWith('data: ')) {
           try {
-            const data = JSON.parse(line.slice(6))
+            const data = JSON.parse(processedLine.slice(6))
             
             if (data.type === 'chunk') {
               streamingMessage.value += data.content
             } else if (data.type === 'end') {
               // Add final assistant message to messages array
               const assistantMessage = {
-                id: Date.now() + 1,
+                id: data.message_id || Date.now() + 1,
                 role: 'assistant',
                 content: streamingMessage.value,
                 created_at: new Date().toISOString()
@@ -356,9 +375,21 @@ const sendMessage = async () => {
               streamingMessage.value = ''
             }
           } catch (e) {
-            // Ignore malformed JSON
+            console.error('Error parsing JSON:', e, 'Line:', line)
           }
         }
+      }
+    }
+    
+    // Process any remaining data in buffer
+    if (buffer.trim() !== '' && buffer.startsWith('data: ')) {
+      try {
+        const data = JSON.parse(buffer.slice(6))
+        if (data.type === 'chunk') {
+          streamingMessage.value += data.content
+        }
+      } catch (e) {
+        console.error('Error parsing final buffer:', e)
       }
     }
   } catch (error) {
@@ -377,7 +408,7 @@ const sendMessage = async () => {
   }
 
   // Update conversation timestamp only (don't reload messages to avoid duplicates)
-  await loadConversations()
+  // await loadConversations() // COMMENTED OUT - This was causing duplicate messages!
 }
 
 const changeModel = async () => {

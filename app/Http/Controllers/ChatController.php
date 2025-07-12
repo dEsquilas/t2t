@@ -11,180 +11,196 @@ use Prism\Prism\Enums\Provider;
 use Prism\Prism\ValueObjects\Messages\UserMessage;
 use Prism\Prism\ValueObjects\Messages\AssistantMessage;
 
+use Illuminate\Support\Facades\Log;
+
 class ChatController extends Controller
 {
-    public function index()
-    {
-        return inertia('Chat/Index');
-    }
+	public function index()
+	{
+		return inertia('Chat/Index');
+	}
 
-    public function getConversations()
-    {
-        return Auth::user()->conversations()
-            ->with('messages')
-            ->orderBy('updated_at', 'desc')
-            ->get();
-    }
+	public function getConversations()
+	{
+		return Auth::user()->conversations()
+			->with('messages')
+			->orderBy('updated_at', 'desc')
+			->get();
+	}
 
-    public function createConversation(Request $request)
-    {
-        $validated = $request->validate([
-            'title' => 'nullable|string|max:255',
-            'model' => 'required|string',
-            'provider' => 'required|string',
-        ]);
+	public function createConversation(Request $request)
+	{
+		$validated = $request->validate([
+			'title' => 'nullable|string|max:255',
+			'model' => 'required|string',
+			'provider' => 'required|string',
+		]);
 
-        $conversation = Auth::user()->conversations()->create([
-            'title' => $validated['title'] ?? 'New Conversation',
-            'model' => $validated['model'],
-            'provider' => $validated['provider'],
-        ]);
+		$conversation = Auth::user()->conversations()->create([
+			'title' => $validated['title'] ?? 'New Conversation',
+			'model' => $validated['model'],
+			'provider' => $validated['provider'],
+		]);
 
-        return response()->json($conversation->load('messages'));
-    }
+		return response()->json($conversation->load('messages'));
+	}
 
-    public function getConversation($id)
-    {
-        $conversation = Auth::user()->conversations()
-            ->with('messages')
-            ->findOrFail($id);
+	public function getConversation($id)
+	{
+		$conversation = Auth::user()->conversations()
+			->with('messages')
+			->findOrFail($id);
 
-        return response()->json($conversation);
-    }
+		return response()->json($conversation);
+	}
 
-    public function updateConversation(Request $request, $id)
-    {
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'model' => 'nullable|string',
-            'provider' => 'nullable|string',
-        ]);
+	public function updateConversation(Request $request, $id)
+	{
+		$validated = $request->validate([
+			'title' => 'required|string|max:255',
+			'model' => 'nullable|string',
+			'provider' => 'nullable|string',
+		]);
 
-        $conversation = Auth::user()->conversations()->findOrFail($id);
-        $conversation->update($validated);
+		$conversation = Auth::user()->conversations()->findOrFail($id);
+		$conversation->update($validated);
 
-        return response()->json($conversation);
-    }
+		return response()->json($conversation);
+	}
 
-    public function deleteConversation($id)
-    {
-        $conversation = Auth::user()->conversations()->findOrFail($id);
-        $conversation->delete();
+	public function deleteConversation($id)
+	{
+		$conversation = Auth::user()->conversations()->findOrFail($id);
+		$conversation->delete();
 
-        return response()->json(['message' => 'Conversation deleted']);
-    }
+		return response()->json(['message' => 'Conversation deleted']);
+	}
 
-    public function sendMessage(Request $request, $id)
-    {
-        $validated = $request->validate([
-            'content' => 'required|string',
-        ]);
+	public function sendMessage(Request $request, $id)
+	{
+		$validated = $request->validate([
+			'content' => 'required|string',
+		]);
 
-        $conversation = Auth::user()->conversations()->findOrFail($id);
+		$conversation = Auth::user()->conversations()->findOrFail($id);
 
-        // Save user message
-        $userMessage = $conversation->messages()->create([
-            'role' => 'user',
-            'content' => $validated['content'],
-        ]);
+		// Save user message
+		$userMessage = $conversation->messages()->create([
+			'role' => 'user',
+			'content' => $validated['content'],
+		]);
 
-        // Build message history for context
-        $messages = [];
-        foreach ($conversation->messages()->orderBy('created_at')->get() as $msg) {
-            if ($msg->role === 'user') {
-                $messages[] = new UserMessage($msg->content);
-            } elseif ($msg->role === 'assistant') {
-                $messages[] = new AssistantMessage($msg->content);
-            }
-        }
+		// Build message history for context
+		$messages = [];
+		foreach ($conversation->messages()->orderBy('created_at')->get() as $msg) {
+			if ($msg->role === 'user') {
+				$messages[] = new UserMessage($msg->content);
+			} elseif ($msg->role === 'assistant') {
+				$messages[] = new AssistantMessage($msg->content);
+			}
+		}
 
-        // Generate AI response using streaming
-        return response()->stream(function () use ($conversation, $messages) {
-            $fullResponse = '';
-            
-            try {
-                $provider = $this->getProvider($conversation->provider);
-                
-                $stream = Prism::text()
-                    ->using($provider, $conversation->model)
-                    ->withMessages($messages)
-                    ->asStream();
+		// Generate AI response using streaming
+		return response()->eventStream(function () use ($conversation, $messages) {
+			$fullResponse = '';
 
-                echo "data: " . json_encode(['type' => 'start']) . "\n\n";
-                ob_flush();
-                flush();
+			try {
+				$provider = $this->getProvider($conversation->provider);
 
-                foreach ($stream as $chunk) {
-                    $fullResponse .= $chunk->text;
-                    
-                    $data = [
-                        'type' => 'chunk',
-                        'content' => $chunk->text,
-                    ];
-                    
-                    echo "data: " . json_encode($data) . "\n\n";
-                    ob_flush();
-                    flush();
-                }
+				$stream = Prism::text()
+					->using($provider, $conversation->model)
+					->withMessages($messages)
+					->asStream();
 
-                // Save assistant response
-                $conversation->messages()->create([
-                    'role' => 'assistant',
-                    'content' => $fullResponse,
-                ]);
+				// Send start event
+				yield "event: start\n";
+				yield "data: " . json_encode(['type' => 'start']) . "\n\n";
 
-                echo "data: " . json_encode(['type' => 'end']) . "\n\n";
-                ob_flush();
-                flush();
-            } catch (\Exception $e) {
-                echo "data: " . json_encode([
-                    'type' => 'error',
-                    'error' => $e->getMessage()
-                ]) . "\n\n";
-                ob_flush();
-                flush();
-            }
-        }, 200, [
-            'Cache-Control' => 'no-cache',
-            'Content-Type' => 'text/event-stream',
-            'X-Accel-Buffering' => 'no',
-        ]);
-    }
+				foreach ($stream as $chunk) {
+					ray($chunk);
+					
+					// Skip Meta chunks as they contain the full accumulated text
+					if ($chunk->chunkType && $chunk->chunkType->value === 'meta') {
+						continue;
+					}
+					
+					// Only process Text chunks which contain incremental content
+					if ($chunk->chunkType && $chunk->chunkType->value === 'text') {
+						$chunkText = $chunk->text;
+						$fullResponse .= $chunkText;
 
-    private function getProvider(string $provider): Provider
-    {
-        return match($provider) {
-            'openai' => Provider::OpenAI,
-            'anthropic' => Provider::Anthropic,
-            default => Provider::Anthropic,
-        };
-    }
+						// Send chunk event with only the new text
+						yield "event: chunk\n";
+						yield "data: " . json_encode([
+								'type' => 'chunk',
+								'content' => $chunkText
+							]) . "\n\n";
+					}
+				}
 
-    public function getAvailableModels()
-    {
-        return response()->json([
-            'models' => [
-                [
-                    'provider' => 'anthropic',
-                    'models' => [
-                        ['id' => 'claude-3-5-sonnet-20241022', 'name' => 'Claude 3.5 Sonnet'],
-                        ['id' => 'claude-3-5-haiku-20241022', 'name' => 'Claude 3.5 Haiku'],
-                        ['id' => 'claude-3-opus-20240229', 'name' => 'Claude 3 Opus'],
-                        ['id' => 'claude-3-sonnet-20240229', 'name' => 'Claude 3 Sonnet'],
-                        ['id' => 'claude-3-haiku-20240307', 'name' => 'Claude 3 Haiku'],
-                    ]
-                ],
-                [
-                    'provider' => 'openai',
-                    'models' => [
-                        ['id' => 'gpt-4o', 'name' => 'GPT-4o'],
-                        ['id' => 'gpt-4o-mini', 'name' => 'GPT-4o Mini'],
-                        ['id' => 'gpt-4-turbo', 'name' => 'GPT-4 Turbo'],
-                        ['id' => 'gpt-4', 'name' => 'GPT-4'],
-                        ['id' => 'gpt-3.5-turbo', 'name' => 'GPT-3.5 Turbo'],
-                    ]
-                ]
-            ]
-        ]);
-    }
+				// Save assistant response
+				$assistantMessage = $conversation->messages()->create([
+					'role' => 'assistant',
+					'content' => $fullResponse,
+				]);
+
+				// Send end event con el mensaje completo guardado
+				yield "event: end\n";
+				yield "data: " . json_encode([
+						'type' => 'end',
+						'message_id' => $assistantMessage->id
+					]) . "\n\n";
+
+			} catch (\Exception $e) {
+				Log::error('Error in chat streaming', [
+					'error' => $e->getMessage(),
+					'conversation_id' => $conversation->id
+				]);
+
+				// Send error event
+				yield "event: error\n";
+				yield "data: " . json_encode([
+						'type' => 'error',
+						'error' => $e->getMessage()
+					]) . "\n\n";
+			}
+		}, endStreamWith: null); // Disable the default end stream message
+	}
+
+	private function getProvider(string $provider): Provider
+	{
+		return match($provider) {
+			'openai' => Provider::OpenAI,
+			'anthropic' => Provider::Anthropic,
+			default => Provider::Anthropic,
+		};
+	}
+
+	public function getAvailableModels()
+	{
+		return response()->json([
+			'models' => [
+				[
+					'provider' => 'anthropic',
+					'models' => [
+						['id' => 'claude-3-5-sonnet-20241022', 'name' => 'Claude 3.5 Sonnet'],
+						['id' => 'claude-3-5-haiku-20241022', 'name' => 'Claude 3.5 Haiku'],
+						['id' => 'claude-3-opus-20240229', 'name' => 'Claude 3 Opus'],
+						['id' => 'claude-3-sonnet-20240229', 'name' => 'Claude 3 Sonnet'],
+						['id' => 'claude-3-haiku-20240307', 'name' => 'Claude 3 Haiku'],
+					]
+				],
+				[
+					'provider' => 'openai',
+					'models' => [
+						['id' => 'gpt-4o', 'name' => 'GPT-4o'],
+						['id' => 'gpt-4o-mini', 'name' => 'GPT-4o Mini'],
+						['id' => 'gpt-4-turbo', 'name' => 'GPT-4 Turbo'],
+						['id' => 'gpt-4', 'name' => 'GPT-4'],
+						['id' => 'gpt-3.5-turbo', 'name' => 'GPT-3.5 Turbo'],
+					]
+				]
+			]
+		]);
+	}
 }
