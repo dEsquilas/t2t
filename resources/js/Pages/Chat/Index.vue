@@ -17,12 +17,12 @@
       </div>
       
       <!-- Conversations list -->
-      <div class="flex-1 overflow-y-auto">
-        <div v-for="conversation in conversations" :key="conversation.id" class="p-2">
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+        <div v-for="conversation in conversations" :key="conversation.id" class="mb-1">
           <div
             @click="selectConversation(conversation)"
             :class="[
-              'p-3 rounded-lg cursor-pointer transition-colors',
+              'p-2 rounded-lg cursor-pointer transition-colors',
               selectedConversation?.id === conversation.id 
                 ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-900 dark:text-blue-100' 
                 : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-gray-100'
@@ -31,7 +31,7 @@
             <div class="font-medium text-sm truncate">
               {{ conversation.title }}
             </div>
-            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
               {{ formatDate(conversation.updated_at) }}
             </div>
           </div>
@@ -85,7 +85,7 @@
         </div>
 
         <!-- Messages - This is the scrollable container -->
-        <div class="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50 dark:bg-gray-900 min-h-0" ref="messagesContainer">
+        <div class="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50 dark:bg-gray-900 min-h-0 custom-scrollbar" ref="messagesContainer">
           <div
             v-for="message in messages"
             :key="message.id"
@@ -96,10 +96,10 @@
           >
             <div
               :class="[
-                'max-w-3xl p-4 rounded-lg',
+                'max-w-3xl rounded-lg',
                 message.role === 'user' 
-                  ? 'bg-blue-600 dark:bg-blue-500 text-white' 
-                  : 'bg-white dark:bg-gray-800 shadow-md text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700'
+                  ? 'bg-blue-600 dark:bg-blue-500 text-white px-3 py-2' 
+                  : 'bg-white dark:bg-gray-800 shadow-md text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 p-3'
               ]"
             >
               <div class="whitespace-pre-wrap break-words">{{ message.content }}</div>
@@ -108,7 +108,7 @@
 
           <!-- Streaming message -->
           <div v-if="isStreaming" class="flex justify-start">
-            <div class="max-w-3xl p-4 rounded-lg bg-white dark:bg-gray-800 shadow-md text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700">
+            <div class="max-w-3xl p-3 rounded-lg bg-white dark:bg-gray-800 shadow-md text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700">
               <div class="whitespace-pre-wrap break-words">{{ streamingMessage }}</div>
               <div class="flex items-center mt-2" v-if="!streamingMessage">
                 <div class="animate-pulse w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full mr-1"></div>
@@ -127,7 +127,7 @@
                 v-model="newMessage"
                 @keydown.enter.prevent="sendMessage"
                 placeholder="Type your message..."
-                class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent resize-none bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent resize-none bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
                 rows="3"
                 :disabled="isStreaming"
                 ref="messageInput"
@@ -481,3 +481,44 @@ const getModelName = (modelId) => {
   return modelId
 }
 </script>
+
+<style scoped>
+/* Custom scrollbar styles */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(209 213 219) transparent; /* gray-300 */
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(209 213 219); /* gray-300 */
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(156 163 175); /* gray-400 */
+}
+
+/* Dark mode scrollbar */
+@media (prefers-color-scheme: dark) {
+  .custom-scrollbar {
+    scrollbar-color: rgb(75 85 99) transparent; /* gray-600 */
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgb(75 85 99); /* gray-600 */
+  }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(107 114 128); /* gray-500 */
+  }
+}
+</style>
