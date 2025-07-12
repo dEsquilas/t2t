@@ -106,6 +106,37 @@
               ]"
             >
               <div class="whitespace-pre-wrap break-words">{{ message.content }}</div>
+              
+              <!-- Display attachments -->
+              <div v-if="message.attachments && message.attachments.length > 0" class="mt-2 space-y-2">
+                <div v-for="attachment in message.attachments" :key="attachment.id || attachment.url" 
+                     :class="[
+                       'rounded overflow-hidden',
+                       message.role === 'user' ? 'bg-blue-700 dark:bg-blue-600' : 'bg-gray-100 dark:bg-gray-700'
+                     ]"
+                >
+                  <!-- Image attachments -->
+                  <img 
+                    v-if="attachment.is_image || (attachment.mime_type && attachment.mime_type.startsWith('image/'))"
+                    :src="attachment.url || attachment.public_url"
+                    :alt="attachment.original_name || attachment.filename"
+                    class="max-w-full h-auto rounded"
+                  />
+                  
+                  <!-- Other file attachments -->
+                  <div v-else 
+                       :class="[
+                         'p-2 flex items-center space-x-2',
+                         message.role === 'user' ? 'text-white' : 'text-gray-700 dark:text-gray-300'
+                       ]"
+                  >
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <span class="text-sm truncate">{{ attachment.original_name || attachment.filename }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -124,21 +155,73 @@
 
         <!-- Input area - Fixed at the bottom -->
         <div class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 flex-shrink-0">
-          <div class="flex space-x-4">
-            <div class="flex-1">
+          <!-- File attachments preview -->
+          <div v-if="attachments.length > 0" class="mb-3 flex flex-wrap gap-2">
+            <div
+              v-for="(attachment, index) in attachments"
+              :key="index"
+              class="relative inline-flex items-center px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg"
+            >
+              <svg v-if="attachment.type.startsWith('image/')" class="w-4 h-4 mr-2 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
+              <svg v-else class="w-4 h-4 mr-2 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ attachment.name }}</span>
+              <button
+                @click="removeAttachment(index)"
+                class="ml-2 text-gray-500 hover:text-red-600"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          
+          <div 
+            @drop.prevent="handleDrop"
+            @dragover.prevent
+            @dragenter.prevent="isDragging = true"
+            @dragleave.prevent="isDragging = false"
+            :class="[
+              'flex space-x-4 transition-colors duration-200',
+              isDragging ? 'bg-blue-50 dark:bg-blue-900/20 border-2 border-dashed border-blue-500 rounded-lg p-2' : ''
+            ]"
+          >
+            <div class="flex-1 relative">
               <textarea
                 v-model="newMessage"
                 @keydown.enter.prevent="sendMessage"
-                placeholder="Type your message..."
+                placeholder="Type your message or drag files here..."
                 class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent resize-none bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
                 rows="3"
                 :disabled="isStreaming"
                 ref="messageInput"
               ></textarea>
+              <!-- File input -->
+              <input
+                type="file"
+                ref="fileInput"
+                @change="handleFileSelect"
+                multiple
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.markdown"
+                class="hidden"
+              />
+              <button
+                @click="$refs.fileInput.click()"
+                class="absolute bottom-2 right-2 p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                :disabled="isStreaming"
+              >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+                </svg>
+              </button>
             </div>
             <button
               @click="sendMessage"
-              :disabled="!newMessage.trim() || isStreaming"
+              :disabled="(!newMessage.trim() && attachments.length === 0) || isStreaming"
               class="bg-blue-600 dark:bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -288,6 +371,9 @@ const selectedModel = ref({ provider: 'anthropic', model: 'claude-3-5-sonnet-202
 const showProfileSelector = ref(false)
 const availableProfiles = ref([])
 const selectedProfile = ref(null)
+const attachments = ref([])
+const isDragging = ref(false)
+const fileInput = ref(null)
 
 // Load data on mount
 onMounted(async () => {
@@ -387,16 +473,48 @@ const createConversationWithProfile = async () => {
 // Reemplaza la función sendMessage con esta versión mejorada
 
 const sendMessage = async () => {
-  if (!newMessage.value.trim() || !selectedConversation.value || isStreaming.value) return
+  if ((!newMessage.value.trim() && attachments.value.length === 0) || !selectedConversation.value || isStreaming.value) return
 
   const messageContent = newMessage.value.trim()
+  const messageAttachments = [...attachments.value]
+  
   newMessage.value = ''
+  attachments.value = []
+
+  // Upload attachments first if any
+  let uploadedAttachments = []
+  if (messageAttachments.length > 0) {
+    try {
+      for (const file of messageAttachments) {
+        const formData = new FormData()
+        formData.append('file', file)
+        
+        const uploadResponse = await axios.post('/api/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        })
+        
+        uploadedAttachments.push(uploadResponse.data)
+      }
+    } catch (error) {
+      console.error('Error uploading files:', error)
+      // Show error to user
+      return
+    }
+  }
 
   // Add user message to UI immediately
   const userMessage = {
     id: Date.now(),
     role: 'user',
     content: messageContent,
+    attachments: uploadedAttachments.map(a => ({
+      original_name: a.filename,
+      mime_type: a.mime_type,
+      is_image: a.is_image,
+      url: a.url
+    })),
     created_at: new Date().toISOString()
   }
   messages.value.push(userMessage)
@@ -416,7 +534,10 @@ const sendMessage = async () => {
         'Accept': 'text/event-stream',
         'X-CSRF-TOKEN': csrfToken
       },
-      body: JSON.stringify({ content: messageContent })
+      body: JSON.stringify({ 
+        content: messageContent,
+        attachments: uploadedAttachments
+      })
     })
 
     if (!response.ok) {
@@ -591,6 +712,56 @@ const getModelName = (modelId) => {
     if (model) return model.name
   }
   return modelId
+}
+
+const handleDrop = (e) => {
+  isDragging.value = false
+  const files = Array.from(e.dataTransfer.files)
+  handleFiles(files)
+}
+
+const handleFileSelect = (e) => {
+  const files = Array.from(e.target.files)
+  handleFiles(files)
+}
+
+const handleFiles = (files) => {
+  const allowedTypes = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/plain', 'text/csv', 'text/markdown', 'text/x-markdown'
+  ]
+  
+  // También permitir archivos .md que pueden tener MIME type diferente
+  const allowedExtensions = ['.md', '.markdown']
+  
+  files.forEach(file => {
+    const fileExtension = '.' + file.name.split('.').pop().toLowerCase()
+    const isAllowedType = allowedTypes.includes(file.type)
+    const isAllowedExtension = allowedExtensions.includes(fileExtension)
+    const isSizeOk = file.size <= 10 * 1024 * 1024 // 10MB
+    
+    if ((isAllowedType || isAllowedExtension) && isSizeOk) {
+      attachments.value.push(file)
+    } else {
+      console.warn(`File ${file.name} is not allowed or too large. Type: ${file.type}, Size: ${file.size}`)
+    }
+  })
+  
+  // Clear file input
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
+}
+
+const removeAttachment = (index) => {
+  attachments.value.splice(index, 1)
 }
 </script>
 
