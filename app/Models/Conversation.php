@@ -13,6 +13,7 @@ class Conversation extends Model
         'title',
         'model',
         'provider',
+        'profile_id',
     ];
 
     public function user(): BelongsTo
@@ -23,5 +24,10 @@ class Conversation extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class);
+    }
+
+    public function profile(): BelongsTo
+    {
+        return $this->belongsTo(Profile::class);
     }
 }
